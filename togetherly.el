@@ -1,4 +1,4 @@
-; togetherly.el -- allow multiple users to edit a single buffer on-line
+;; togetherly.el -- allow multiple clients to edit a single buffer on-line
 
 ;; usage
 ;; -----
@@ -17,14 +17,12 @@
 ;; - bugfix
 ;;   - プロセスが事故死したときの挙動が闇
 ;;     - logoutの中でプロセス殺すよりプロセスの死にフックしてlogout処理をすべき
-;;       - byeメッセージが送れないけどまあいいっしょ
 
 ;; other issues
 ;; ------------
 ;; - enhancement
 ;;   - チャットができるといい？
 ;;   - 画面をシェアしつつ編集を許可しないということができてもいいかも
-;;   - コンフリクト検出をもう少しまともに
 ;; - bugfix
 ;;   - 行末のオーバーレイがきもい
 ;;     - regionとpointの両方が見える
@@ -86,7 +84,7 @@
     (overlay-put ov 'after-string after-str)))
 
 (defun togetherly--buffer-string ()
-  "Like `buffer-string' but not aware of narrowing and
+  "Like `buffer-string' but NOT aware of narrowing and
 text-properties."
   (save-restriction
     (widen)
@@ -140,11 +138,9 @@ text-properties."
 
 ;; + the protocol
 
-;; login / kick
-;; - (login ID . KEYWORD) [Client->Server]
-;; - (bye . REASON) [Server->Client] <Obsolete>
+;; login
+;; - (login . ID) [Client->Server]
 ;; - (error . MESSAGE) [Server->Client]
-;; * note that clients can also be disconnected without receiving `bye'.
 ;; * clients can logout from Togetherly by just disconnecting.
 
 ;; share buffer-string
@@ -166,8 +162,7 @@ text-properties."
 ;; + server
 ;;   + vars
 
-(defvar togetherly--server nil)            ; (PROC NAME RCOLOR . PCOLOR)
-(defvar togetherly--server-keyword nil)
+(defvar togetherly--server nil)         ; (PROC NAME RCOLOR . PCOLOR)
 (defvar togetherly--server-buffer nil)
 (defvar togetherly--server-timer-object nil)
 (defvar togetherly--server-clients nil) ; list of (PROC NAME RCOLOR PCOLOR REGION_OV . POINT_OV)
@@ -183,30 +178,40 @@ text-properties."
   (dolist (client togetherly--server-clients)
     (togetherly--server-send client obj)))
 
+(defun togetherly--server-new-client (proc name)
+  "Add new client named NAME for PROC and return the client
+object."
+  (with-current-buffer togetherly--server-buffer
+    (let* ((pcolor (car togetherly-cursor-colors))
+           (rcolor (car togetherly-region-colors))
+           (client `(,proc ,name ,rcolor ,pcolor
+                           ,(togetherly--make-overlay 1 2 rcolor 0)
+                           . ,(togetherly--make-overlay 1 2 pcolor 1))))
+      (setq togetherly-region-colors (cdr togetherly-region-colors)
+            togetherly-cursor-colors (cdr togetherly-cursor-colors))
+      (push client togetherly--server-clients)
+      (setq header-line-format
+            (concat " " (propertize name 'face `(:background ,pcolor))
+                    " " header-line-format))
+      client)))
+
+(defun togetherly--server-remove-client (client)
+  "Remove CLIENT."
+  (cl-destructuring-bind (proc name _ __ region-ov . point-ov) client
+    (let* ((old-header (buffer-local-value 'header-line-format togetherly--server-buffer))
+           (new-header (with-temp-buffer
+                         (insert old-header)
+                         (search-backward (regexp-quote (concat " " name " ")))
+                         (replace-match "")
+                         (buffer-string))))
+      (with-current-buffer togetherly--server-buffer
+        (setq header-line-format new-header)
+        (delete-overlay region-ov)
+        (delete-overlay point-ov)))
+    (setq togetherly--server-clients (delq client togetherly--server-clients))
+    (when (process-live-p proc) (delete-process proc))))
+
 ;;   + server process
-
-(defun togetherly--server-filter-function (proc str)
-  (with-current-buffer (get-buffer-create " *togetherly-server-tmp*")
-    (save-excursion
-      (goto-char (point-max))
-      (insert str))
-    (let (message)
-      (while (setq message (ignore-errors (read (current-buffer))))
-        (togetherly--server-process-message proc message)
-        (delete-region (point) (point-min)))
-      (goto-char (point-min)))))
-
-(defun togetherly--server-sentinel-function (proc message)
-  (unless (string-match "^\\(open\\|delete\\)" message)
-    (let ((client (assoc proc togetherly--server-clients)))
-      (when client
-        (togetherly--server-kick-client client "Terminated.")))))
-
-(defun togetherly--server-kill-buffer-function ()
-  (or (not (eq togetherly--server-buffer (current-buffer)))
-      (when (y-or-n-p "This buffer is running the Togetherly server. Really kill buffer ? ")
-        (togetherly-server-close)
-        t)))
 
 (defun togetherly-server-start ()
   "Start a Togetherly server with this buffer."
@@ -227,16 +232,14 @@ text-properties."
                  togetherly--server         `(,server-proc ,server-name ,rcolor . ,pcolor)
                  togetherly--server-buffer  (current-buffer)
                  togetherly--server-clients nil
-                 togetherly--server-keyword (read-passwd "Set Password : ")
                  togetherly--server-timer-object
                  (run-with-timer nil togetherly-cursor-sync-rate
                                  'togetherly--server-broadcast-cursor-positions))
            (set (make-local-variable 'header-line-format)
                 (concat " " (propertize server-name 'face `(:background ,pcolor)))))
-         (add-hook 'kill-emacs-hook 'togetherly-server-close)
          (add-hook 'before-change-functions 'togetherly--server-before-change nil t)
          (add-hook 'after-change-functions 'togetherly--server-after-change nil t)
-         (add-hook 'kill-buffer-query-functions 'togetherly--server-kill-buffer-function))
+         (add-hook 'kill-buffer-query-functions 'togetherly--server-kill-buffer-query))
         ((y-or-n-p "Togetherly server already started. Migrate to this buffer ? ")
          (set (make-local-variable 'header-line-format)
               (buffer-local-value 'header-line-format togetherly--server-buffer))
@@ -251,42 +254,45 @@ text-properties."
         (t
          (message "Togetherly: Canceled."))))
 
+(defun togetherly--server-filter-function (proc str)
+  (with-current-buffer (get-buffer-create " *togetherly-server-tmp*")
+    (save-excursion
+      (goto-char (point-max))
+      (insert str))
+    (let (message)
+      (while (setq message (ignore-errors (read (current-buffer))))
+        (togetherly--server-process-message proc message)
+        (delete-region (point) (point-min)))
+      (goto-char (point-min)))))
+
+(defun togetherly--server-sentinel-function (proc message)
+  (unless (string-match "^open" message)
+    (let ((client (assoc proc togetherly--server-clients)))
+      (cond (client                     ; client process is killed
+             (togetherly--server-remove-client client)
+             (message "Togetherly: %s logged out." name))
+            ((eq proc (car togetherly--server)) ; server process is killed
+             (mapc 'togetherly--server-remove-client togetherly--server-clients)
+             (setq togetherly--server nil)
+             (cancel-timer togetherly--server-timer-object)
+             (with-current-buffer togetherly--server-buffer
+               (kill-local-variable 'header-line-format))
+             (remove-hook 'kill-buffer-query-functions 'togetherly--server-kill-buffer-query)
+             (remove-hook 'before-change-functions 'togetherly--server-before-change t)
+             (remove-hook 'after-change-functions 'togetherly--server-after-change t))))))
+
+(defun togetherly--server-kill-buffer-query ()
+  (or (not (eq (current-buffer) togetherly--server-buffer))
+      (when (y-or-n-p "This buffer is running the Togetherly server. Really kill buffer ? ")
+        (togetherly-server-close)
+        t)))
+
 (defun togetherly-server-close ()
   "Close the Togetherly server."
   (interactive)
-  (mapc (lambda (c) (togetherly--server-kick-client c "Server Closed."))
-        togetherly--server-clients)
-  (delete-process (car togetherly--server))
-  (setq togetherly--server nil)
-  (cancel-timer togetherly--server-timer-object)
-  (with-current-buffer togetherly--server-buffer
-    (kill-local-variable 'header-line-format))
-  (remove-hook 'kill-emacs-hook 'togetherly-server-close)
-  (remove-hook 'before-change-functions 'togetherly--server-before-change t)
-  (remove-hook 'after-change-functions 'togetherly--server-after-change t)
-  (remove-hook 'kill-buffer-query-functions 'togetherly--server-kill-buffer-function))
+  (delete-process (car togetherly--server)))
 
 ;;   + API
-
-(defun togetherly--server-kick-client (client reason)
-  "Kick CLIENT for REASON. REASON is sent to the client, if it's
-not yet disconnected."
-  (cl-destructuring-bind (proc name _ __ region-ov . point-ov) client
-    (delete-overlay region-ov)
-    (delete-overlay point-ov)
-    (let* ((old-header (buffer-local-value 'header-line-format togetherly--server-buffer))
-           (new-header (with-temp-buffer
-                         (insert old-header)
-                         (search-backward (regexp-quote (concat " " name " ")))
-                         (replace-match "")
-                         (buffer-string))))
-      (with-current-buffer togetherly--server-buffer
-        (setq header-line-format new-header)))
-    (setq togetherly--server-clients (delq client togetherly--server-clients))
-    (when (process-live-p proc)
-      (process-send-string proc (format "(bye . \"%s\")" reason))
-      (delete-process proc))
-    (message "Togetherly: %s logged out." name)))
 
 (defun togetherly--server-broadcast-cursor-positions ()
   "Broadcast all clients' cursor positions."
@@ -322,31 +328,16 @@ not yet disconnected."
   (cl-case (car message)
 
     ((login)
-     (cl-destructuring-bind (name . keyword) (cdr message)
+     (let ((name (cdr message)))
        (cond
-        ((not (string= keyword togetherly--server-keyword))
-         (process-send-string proc "(bye . \"Incorrect Password.\")")
-         (delete-process proc))
         ((or (string= name (cadr togetherly--server))
              (member name (mapcar 'cadr togetherly--server-clients)))
-         (process-send-string proc "(bye . \"Duplicate Displayname.\")")
+         (process-send-string proc "(error . \"Duplicate Displayname.\")")
          (delete-process proc))
         (t
-         (let ((pcolor (car togetherly-cursor-colors))
-               (rcolor (car togetherly-region-colors)))
-           (setq togetherly-region-colors (cdr togetherly-region-colors)
-                 togetherly-cursor-colors (cdr togetherly-cursor-colors))
-           (with-current-buffer togetherly--server-buffer
-             (push `(,proc ,name ,rcolor ,pcolor
-                           ,(togetherly--make-overlay 1 2 rcolor 0)
-                           . ,(togetherly--make-overlay 1 2 pcolor 1))
-                   togetherly--server-clients)
-             (setq header-line-format
-                   (concat " " (propertize name 'face `(:background ,pcolor))
-                           " " header-line-format))))
          (set-process-query-on-exit-flag proc nil)
          (togetherly--server-send
-          (car togetherly--server-clients)
+          (togetherly--server-new-client proc name)
           (with-current-buffer togetherly--server-buffer
             `(welcome ,(togetherly--buffer-string) . ,major-mode)))
          (message "Togetherly: %s logged in." name)))))
@@ -450,9 +441,9 @@ not yet disconnected."
          (add-hook 'after-change-functions 'togetherly--client-after-change nil t)))
      (message "Togetherly: Buffer refreshed."))
 
-    ((bye)
+    ((error)
      (togetherly-client-logout)
-     (message "Togetherly: Disconnected (%s)." (cdr message)))
+     (message "Togetherly Error: %s." (cdr message)))
 
     ((changed)
      (cl-destructuring-bind (name beg before-string . after-string) (cdr message)
@@ -500,7 +491,7 @@ not yet disconnected."
 (defun togetherly--client-sentinel-function (proc message)
   (unless (string-match "^\\(open\\|delete\\)" message)
     (togetherly-client-logout)
-    (message "Togetherly: Network error. (%s)" message)))
+    (message "Togetherly: Server Closed.")))
 
 (defun togetherly--client-kill-buffer-function ()
   (or (not togetherly--client-process)
@@ -517,8 +508,7 @@ not yet disconnected."
               t))
     (let* ((host (togetherly--read-target-address))
            (port (togetherly--read-port))
-           (name (setq togetherly--client-name (togetherly--read-display-name)))
-           (keyword (read-passwd "Password : ")))
+           (name (setq togetherly--client-name (togetherly--read-display-name))))
       (setq togetherly--client-process
             (make-network-process
              :name "togetherly" :host host :service port :noquery t
@@ -530,7 +520,7 @@ not yet disconnected."
                             'togetherly--client-report-cursor-position))
       (read-only-mode 1) ; make the buffer read-only until `welcome' message
       (add-hook 'kill-buffer-query-functions 'togetherly--client-kill-buffer-function)
-      (togetherly--client-send `(login ,name . ,keyword)))))
+      (togetherly--client-send `(login . ,name)))))
 
 (defun togetherly--client-logout-internal ()
   "Logout from Togetherly server, but do not kill the Togetherly
