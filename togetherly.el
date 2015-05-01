@@ -1,32 +1,59 @@
-;; togetherly.el -- allow multiple clients to edit a single buffer on-line
+;;; togetherly.el --- allow multiple clients to edit a single buffer online
 
-;; usage
-;; -----
-;; (require 'togetherly)
+;; Copyright (C) 2015 zk_phi
+
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation; either version 2 of the License, or
+;; (at your option) any later version.
 ;;
-;; - `M-x togetherly-server-start' to start a server
-;; - `M-x togetherly-client-login' to join as a client
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+;; GNU General Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License
+;; along with this program; if not, write to the Free Software
+;; Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
-;; important issues
-;; ----------------
+;; Author: zk_phi
+;; URL: http://hins11.yu-yake.com/
+;; Version: 0.1
+;; Package-Requires: ((cl-lib "0.3"))
+
+;;; Commentary:
+
+;; Server:
+;;   1. Open a buffer you want to share.
+;;   2. `M-x togetherly-server-start' to start a server.
+;;   3. `M-x togetherly-server-close' when finished.
+;;
+;; Client:
+;;   1. `M-x togetherly-client-login' to request access to the server.
+;;   2. Kill `*Togetherly*' buffer when finished.
+
+;;; Change Log:
+
+;; 0.1.0 test release
+
+;;; Code:
+
+(require 'cl-lib)
+(require 'ido)
+
+;; todos
+;; -----
 ;; - enhancement
 ;;   - クライアントを複数立ち上げられるように
 ;;     - ポートを切り替えてサーバーも複数立ち上がると楽しい
 ;;     - *Togetherly*の代わりにプロセスバッファを作って、各変数をバッファローカルにすればおｋ？
 ;;   - ここを見ろ！コマンド (ハイライト＋recenterを配信？)
-
-;; other issues
-;; ------------
-;; - enhancement
 ;;   - チャットができるといい？
 ;;   - 画面をシェアしつつ編集を許可しないということができてもいいかも
 ;; - bugfix
 ;;   - 行末のオーバーレイがきもい
 ;;     - regionとpointの両方が見える
 ;;     - 複数のカーソルが同じ行末に来た時の挙動
-
-(require 'cl-lib)
-(require 'ido)
 
 ;; + customs
 
@@ -502,3 +529,5 @@ text-properties."
 ;; + provide
 
 (provide 'togetherly)
+
+;;; togetherly.el ends here
