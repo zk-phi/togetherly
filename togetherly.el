@@ -485,13 +485,19 @@ text-properties."
       (setq togetherly--client-timer-object
             (run-with-timer nil togetherly-cursor-sync-rate
                             'togetherly--client-report-cursor-position))
+      (add-hook 'kill-buffer-query-functions 'togetherly--client-kill-buffer-query)
       (togetherly--client-send `(login . ,name)))))
 
 (defun togetherly--client-sentinel-function (proc message)
   (setq togetherly--client-process nil)
   (cancel-timer togetherly--client-timer-object)
+  (remove-hook 'kill-buffer-query-functions 'togetherly--client-kill-buffer-query)
   (when (get-buffer "*Togetherly*")
     (kill-buffer "*Togetherly*")))
+
+(defun togetherly--client-kill-buffer-query ()
+  (or (not (string= (buffer-name) "*Togetherly*"))
+      (y-or-n-p "Really logout from Togetherly server ? ")))
 
 ;; + provide
 
