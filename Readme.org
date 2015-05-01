@@ -1,0 +1,48 @@
+* togetherly.el
+
+allow multiple clients to edit a single buffer on-line
+
+ネットワーク経由で同じバッファをわいわい編集
+
+** Screencast
+
+[[file:imgs/screencast.gif]]
+
+** Usage
+
+- As a server:
+
+  1. Open a buffer you want to share.
+
+  2. Call =M-x togetherly-server-start= and set IP address / port to
+     listen to.
+
+  3. Call =M-x togetherly-server-close= when finished.
+
+  If you want to share another buffer with the same members, call =M-x
+  togetherly-server-start= again (without closing the server).
+
+- As a client:
+
+  1. Call =M-x togetherly-client-start= and input IP address / port
+     you want to login to.
+
+  2. Kill =*Togetherly*= buffer when finished.
+
+** Limitations
+
+- =togetherly.el= does not support multiple servers / client per a
+  single Emacs instance (for now).
+
+- =togetherly.el= is not secure at all (for now) so you should not
+  share secret documents.
+
+** Bug reporting
+
+Before reporting "conenction error" bugs, PLEASE DO :
+
+- confirm that the IP address is reachable (try =ping <addr>=)
+
+- check that your firewall setting permits Emacs to use the port
+
+- confirm that simpler servers work fine ([[http://www.emacswiki.org/emacs/EmacsEchoServer][EmacsEchoServer]] for example)
