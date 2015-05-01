@@ -20,7 +20,8 @@ allow multiple clients to edit a single buffer on-line
   3. Call =M-x togetherly-server-close= when finished.
 
   If you want to share another buffer with the same members, call =M-x
-  togetherly-server-start= again (without closing the server).
+  togetherly-server-start= again in that buffer (without closing the
+  server).
 
 - As a client:
 
