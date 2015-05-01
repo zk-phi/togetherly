@@ -29,7 +29,7 @@
 ;;   3. `M-x togetherly-server-close' when finished.
 ;;
 ;; Client:
-;;   1. `M-x togetherly-client-login' to request access to the server.
+;;   1. `M-x togetherly-client-start' to request access to the server.
 ;;   2. Kill `*Togetherly*' buffer when finished.
 
 ;;; Change Log:
@@ -493,7 +493,7 @@ text-properties."
         (delete-region (point) (point-min)))
       (goto-char (point-min)))))
 
-(defun togetherly-client-login ()
+(defun togetherly-client-start ()
   (interactive)
   (when (or (null togetherly--client-process)
             (when (y-or-n-p "Already running Togetherly client. Kill the client first ? ")
