@@ -50,10 +50,6 @@
 ;;   - ここを見ろ！コマンド (ハイライト＋recenterを配信？)
 ;;   - チャットができるといい？
 ;;   - 画面をシェアしつつ編集を許可しないということができてもいいかも
-;; - bugfix
-;;   - 行末のオーバーレイがきもい
-;;     - regionとpointの両方が見える
-;;     - 複数のカーソルが同じ行末に来た時の挙動
 
 ;; + customs
 
@@ -89,20 +85,20 @@
 
 ;; + utilities
 
-(defun togetherly--make-overlay (beg end bgcolor &optional priority)
+(defun togetherly--make-overlay (beg end bgcolor &optional priority omit-eol)
   "Make cursor/region overlays."
   (let ((ov (make-overlay 1 1)))
     (overlay-put ov 'face `(:background ,bgcolor))
     (overlay-put ov 'bgcolor bgcolor)
     (overlay-put ov 'priority (or priority 0))
-    (togetherly--move-overlay ov beg end)
+    (togetherly--move-overlay ov beg end omit-eol)
     ov))
 
-(defun togetherly--move-overlay (ov beg end)
+(defun togetherly--move-overlay (ov beg end &optional omit-eol)
   "Move cursor/region overlays."
   (let* ((eol (eql (char-before end) ?\n))
          (end (if eol (1- end) end))
-         (after-str (when eol
+         (after-str (when (and eol (not omit-eol))
                       (propertize " " 'face `(:background ,(overlay-get ov 'bgcolor))))))
     (move-overlay ov beg end (current-buffer))
     (overlay-put ov 'after-string after-str)))
@@ -290,7 +286,9 @@ text-properties."
                (cl-destructuring-bind (_ __ ___ ____ region-ov . point-ov) client
                  (with-current-buffer togetherly--server-buffer
                    (togetherly--move-overlay point-ov point (1+ point))
-                   (togetherly--move-overlay region-ov (or mark point) (1+ point))))
+                   (if mark
+                       (togetherly--move-overlay region-ov mark (1+ point) t)
+                     (togetherly--move-overlay region-ov 0 0 t))))
              ;; confliction detected
              (error
               (with-current-buffer togetherly--server-buffer
@@ -415,7 +413,7 @@ text-properties."
 (defun togetherly--client-report-cursor-position ()
   "Report the cursor position to the server."
   (with-current-buffer "*Togetherly*"
-    (togetherly--client-send `(moved ,(when mark-active (mark)) . ,(point)))))
+    (togetherly--client-send `(moved ,(when (use-region-p) (mark)) . ,(point)))))
 
 (defvar togetherly--client-last-change nil)
 (defun togetherly--client-before-change (beg end)
@@ -475,7 +473,7 @@ text-properties."
          (cl-destructuring-bind (name rcolor pcolor mark . point) cursor
            (unless (string= name togetherly--client-name)
              (when mark
-               (push (togetherly--make-overlay mark (1+ point) rcolor 0)
+               (push (togetherly--make-overlay mark (1+ point) rcolor 0 t)
                      togetherly--client-overlays))
              (push (togetherly--make-overlay point (1+ point) pcolor 1)
                    togetherly--client-overlays))))))))
