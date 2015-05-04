@@ -18,7 +18,7 @@
 
 ;; Author: zk_phi
 ;; URL: http://hins11.yu-yake.com/
-;; Version: 0.1
+;; Version: 0.1.1
 ;; Package-Requires: ((cl-lib "0.3"))
 
 ;;; Commentary:
@@ -35,8 +35,11 @@
 ;;; Change Log:
 
 ;; 0.1.0 test release
+;; 0.1.1 add `togetherly-server-comehere' command
 
 ;;; Code:
+
+(defconst togetherly-version "0.1.1")
 
 (require 'cl-lib)
 (require 'ido)
@@ -161,12 +164,11 @@ text-properties."
 ;; login
 ;; - (login . ID) [Client->Server]
 ;; - (error . MESSAGE) [Server->Client]
-;; * clients can logout from Togetherly by just disconnecting.
 
 ;; share buffer-string
 ;; - (refresh) [Client->Server]
 ;; - (welcome BUFFER_STRING . MAJOR_MODE) [Server->Client]
-;; * `refresh' asks the server to send `welcome' message immediately.
+;; * `refresh' tells the server to send `welcome' message immediately.
 ;; * note that `welcome' can also be sent before `refresh' request, as needed.
 
 ;; share modifications
@@ -178,6 +180,9 @@ text-properties."
 ;; - (moved MARK . POINT) [Client->Server]
 ;; - (cursors (NAME1 RCOLOR1 PCOLOR1 MARK1 . POINT1) ...) [Server->Client]
 ;; * `cursors' is broadcasted every `togetherly-cursor-sync-rate' seconds.
+
+;; other commands
+;; - (comehere . POINT) [Server->Client]
 
 ;; + server
 ;;   + vars
@@ -228,6 +233,10 @@ text-properties."
              ,(car togetherly--server-last-change)
              ,(cdr togetherly--server-last-change)
              . ,(buffer-substring-no-properties beg (min (+ end 2) (point-max))))))
+
+(defun togetherly-server-comehere ()
+  (interactive)
+  (togetherly--server-broadcast `(comehere . ,(point))))
 
 (defun togetherly--server-process-message (proc message)
   "Process MESSAGE from client process PROC."
@@ -476,7 +485,22 @@ text-properties."
                (push (togetherly--make-overlay mark (1+ point) rcolor 0 t)
                      togetherly--client-overlays))
              (push (togetherly--make-overlay point (1+ point) pcolor 1)
-                   togetherly--client-overlays))))))))
+                   togetherly--client-overlays))))))
+
+    ((comehere)
+     (let* ((buf (get-buffer "*Togetherly*"))
+            (windows (mapcar (lambda (w) (cons (window-buffer w) w)) (window-list)))
+            (windows (cl-remove-if-not (lambda (p) (eq buf (car p))) windows)))
+       (condition-case nil
+           (if windows
+               (dolist (window (mapcar 'cdr windows))
+                 (with-selected-window window
+                   (goto-char (cdr message))
+                   (recenter)))
+             (with-current-buffer "*Togetherly*"
+               (goto-char (cdr message))
+               (recenter)))
+         (error (togetherly--client-send '(refresh))))))))
 
 ;;   + client process
 
