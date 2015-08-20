@@ -31,6 +31,8 @@
 ;; Client:
 ;;   1. `M-x togetherly-client-start' to request access to the server.
 ;;   2. Kill `*Togetherly*' buffer when finished.
+;;
+;; See Readme.org for more information.
 
 ;;; Change Log:
 
@@ -46,13 +48,14 @@
 
 ;; todos
 ;; -----
-;; - enhancement
-;;   - クライアントを複数立ち上げられるように
-;;     - ポートを切り替えてサーバーも複数立ち上がると楽しい
-;;     - *Togetherly*の代わりにプロセスバッファを作って、各変数をバッファローカルにすればおｋ？
-;;   - ここを見ろ！コマンド (ハイライト＋recenterを配信？)
-;;   - チャットができるといい？
-;;   - 画面をシェアしつつ編集を許可しないということができてもいいかも
+;; - クライアントを複数立ち上げられるように
+;;   - ポートを切り替えてサーバーも複数立ち上がると楽しい
+;;   - *Togetherly*の代わりにプロセスバッファを作って、各変数をバッファローカルにすればおｋ？
+;; - チャットができるといい？
+;; - 画面をシェアしつつ編集を許可しないということができてもいいかも
+;;   - client ごとに read-only かどうかの属性を持てばいい？
+;; - 認証機能やっぱほしい？
+;; - 色を同期する必要はないかも
 
 ;; + customs
 
@@ -173,8 +176,10 @@ text-properties."
 
 ;; share modifications
 ;; - (changed NAME BEG BEFORE_STRING . AFTER_STRING) [Server<->Client]
-;; * `changed' message is broadcasted for ALL clients, including the
-;;   client who actually made the change.
+;; * When `changed' message sent to the server, the message is
+;;   broadcasted for ALL clients, including the client who actually
+;;   made the change. Thus clients must be aware if the message is the
+;;   one sent by himself or not.
 
 ;; share members / cursor-positions
 ;; - (moved MARK . POINT) [Client->Server]
@@ -224,7 +229,7 @@ text-properties."
 (defvar togetherly--server-last-change nil)
 (defun togetherly--server-before-change (beg end)
   (setq togetherly--server-last-change
-        ;; store 2 extra characters to make it easier to detect conflictions
+        ;; store 2 extra characters to make it easier to detect confliction
         ;;                                            vvvvvvvvvvvvvvvvvvvvvvvvvvv
         (cons beg (buffer-substring-no-properties beg (min (+ end 2) (point-max))))))
 (defun togetherly--server-after-change (beg end _)
