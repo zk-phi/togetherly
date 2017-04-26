@@ -451,7 +451,8 @@ text-properties."
              (mode (cddr message)))
          (erase-buffer)
          (insert (cadr message))
-         (funcall (or (and (fboundp mode) mode) 'fundamental-mode))
+         (unless (eq major-mode mode)
+           (funcall (or (and (fboundp mode) mode) 'fundamental-mode)))
          (goto-char (max (min original-pos (point-max)) (point-min)))
          ;; local hooks must be set after changing major-mode
          (add-hook 'before-change-functions 'togetherly--client-before-change nil t)
