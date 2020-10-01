@@ -1,5 +1,7 @@
 * togetherly.el
 
+[[https://melpa.org/#/togetherly][file:https://melpa.org/packages/togetherly-badge.svg]]
+
 allow multiple clients to edit a single buffer on-line
 
 ネットワーク経由で同じバッファをわいわい編集
